@@ -63,6 +63,7 @@ button { font: inherit; color: inherit; }
 .top-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .brand-kicker { font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: var(--gold); font-weight: 700; }
 .brand h1 { font-size: 18px; font-weight: 800; letter-spacing: -.01em; }
+.brand-sub { font-size: 11px; opacity: .75; margin-top: 1px; }
 .auth-btn {
   flex: none; border: 1px solid rgb(255 255 255 / .4); background: rgb(255 255 255 / .1);
   color: #fff; border-radius: 999px; padding: 6px 12px; font-size: 13px; font-weight: 600; cursor: pointer;
