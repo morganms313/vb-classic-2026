@@ -1,0 +1,6 @@
+{
+  "name": "valencia-frosh-soph-classic-2026",
+  "private": true,
+  "type": "module",
+  "scripts": { "test": "node --test", "serve": "python3 -m http.server 8080" }
+}

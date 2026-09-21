@@ -80,7 +80,9 @@ Tap any match → bottom sheet with set score inputs (pool: 3 sets, set 3 option
 
 ### Security rules (POC)
 
-Public read. Writes allowed only to `scores/{id}` where id matches `^[A-F][1-6]$|^[GP]([1-9]|1[0-6])$`, `sets` is a list of 1–3 pairs of ints 0–60, `by` is a string ≤ 40 chars; and to `seeds/{gold|purple}` with `order` a list of 12 strings. Everything else denied. Later upgrade: require `request.auth` + allowlist of scorekeeper emails.
+**Updated 2026-09-21:** editing requires Google sign-in (Firebase Auth); viewing stays public. Each write records the editor's name + uid.
+
+Public read. Signed-in writes allowed only to `scores/{id}` where id matches `^[A-F][1-6]$|^[GP]([1-9]|1[0-6])$`, `sets` is a list of 1–3 pairs of ints 0–60, `by` is a string ≤ 40 chars; and to `seeds/{gold|purple}` with `order` a list of 12 strings. Everything else denied. Later upgrade: allowlist of scorekeeper emails in `isEditor()`.
 
 ## Testing
 
