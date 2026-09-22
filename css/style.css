@@ -262,7 +262,15 @@ th { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spa
 .set-row input:focus { outline: none; border-color: var(--purple-2); }
 .err { color: var(--loss); font-weight: 600; min-height: 1.2em; margin: 4px 0; font-size: 14px; }
 .signin-box { text-align: center; padding: 8px 0; }
-.signin-box .btn { width: 100%; }
+.signin-box .btn { width: 100%; margin-top: 8px; }
+.btn.apple { background: #000; border-color: #000; color: #fff; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .btn.apple { background: #fff; border-color: #fff; color: #000; } }
+.or { display: flex; align-items: center; gap: 10px; margin: 14px 0 6px; color: var(--muted); font-size: 13px; }
+.or::before, .or::after { content: ""; flex: 1; height: 1px; background: var(--line); }
+.name-field { display: block; text-align: left; }
+.name-field span { display: block; font-size: 13px; font-weight: 700; color: var(--muted); margin-bottom: 4px; }
+.name-field input { width: 100%; font: inherit; font-size: 16px; padding: 10px 12px; border-radius: 10px; border: 2px solid var(--line); background: var(--bg); color: var(--ink); }
+.name-field input:focus { outline: none; border-color: var(--purple-2); }
 .seed-grid { display: grid; grid-template-columns: 1fr; gap: 6px; margin: 10px 0; }
 @media (min-width: 480px) { .seed-grid { grid-template-columns: 1fr 1fr; } }
 .seed-row { display: flex; align-items: center; gap: 8px; }

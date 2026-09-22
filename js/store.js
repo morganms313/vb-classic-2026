@@ -4,12 +4,15 @@
 // Interface:
 //   store.mode                      'live' | 'demo'
 //   store.onData(cb)                cb({scores, seeds}) on every change
-//   store.onUser(cb)                cb(user|null), user = {name, email}
-//   store.signIn() / store.signOut()
+//   store.signInMethods            e.g. ['google', 'apple', 'guest'] (from firebase-config.js)
+//   store.onUser(cb)                cb(user|null), user = {name, email, guest}
+//   store.signIn(method, name?)     method: 'google' | 'apple' | 'guest' (guest requires name)
+//   store.setName(name)             for accounts with no display name (e.g. Apple with hidden name)
+//   store.signOut()
 //   store.saveScore(id, sets)       / store.clearScore(id)
 //   store.saveSeeds(div, order)     / store.clearSeeds(div)
 
-import { firebaseConfig } from './firebase-config.js';
+import { firebaseConfig, signInMethods } from './firebase-config.js';
 
 const SDK = 'https://www.gstatic.com/firebasejs/12.3.0';
 const isConfigured = !firebaseConfig.apiKey.startsWith('PASTE');
@@ -55,7 +58,9 @@ async function firestoreStore() {
   watch('seeds', 'seeds');
 
   let user = null;
-  const stamp = () => ({ by: user?.name ?? '', uid: auth.currentUser.uid, updatedAt: fs.serverTimestamp() });
+  let userCb = () => {};
+  const toUser = (u) => (u ? { name: u.displayName || '', email: u.email || '', guest: u.isAnonymous } : null);
+  const stamp = () => ({ by: byLine(user), uid: auth.currentUser.uid, updatedAt: fs.serverTimestamp() });
   const requireUser = () => {
     if (!auth.currentUser) throw new Error('Sign in with Google to make changes.');
   };
@@ -63,13 +68,28 @@ async function firestoreStore() {
   return {
     mode: 'live',
     onData(cb) { listeners.push(cb); cb(data); },
+    signInMethods,
     onUser(cb) {
-      au.onAuthStateChanged(auth, (u) => {
-        user = u ? { name: u.displayName || u.email, email: u.email } : null;
-        cb(user);
-      });
+      userCb = cb;
+      au.onAuthStateChanged(auth, (u) => { user = toUser(u); cb(user); });
     },
-    signIn: () => au.signInWithPopup(auth, new au.GoogleAuthProvider()),
+    async signIn(method, name) {
+      if (method === 'guest') {
+        const cred = await au.signInAnonymously(auth);
+        await au.updateProfile(cred.user, { displayName: name });
+      } else {
+        const provider = method === 'apple' ? new au.OAuthProvider('apple.com') : new au.GoogleAuthProvider();
+        if (method === 'apple') { provider.addScope('email'); provider.addScope('name'); }
+        await au.signInWithPopup(auth, provider);
+      }
+      user = toUser(auth.currentUser);
+      userCb(user);
+    },
+    async setName(name) {
+      await au.updateProfile(auth.currentUser, { displayName: name });
+      user = toUser(auth.currentUser);
+      userCb(user);
+    },
     signOut: () => au.signOut(auth),
     // Writes resolve on server ack; offline they queue, so don't await them in the UI.
     saveScore(id, sets) {
@@ -103,19 +123,31 @@ function demoStore() {
   };
   if (bc) bc.onmessage = () => { data = read(); emit(); };
   const requireUser = () => { if (!user) throw new Error('Sign in to make changes.'); };
-  const stamp = () => ({ by: user.name, updatedAt: Date.now() });
+  const stamp = () => ({ by: byLine(user), updatedAt: Date.now() });
 
   return {
     mode: 'demo',
     onData(cb) { listeners.push(cb); cb(data); },
+    signInMethods,
     onUser(cb) { userListeners.push(cb); cb(user); },
-    async signIn() { user = { name: 'Demo scorekeeper', email: '' }; userListeners.forEach((cb) => cb(user)); },
+    async signIn(method, name) {
+      user = { name: method === 'guest' ? name : 'Demo scorekeeper', email: '', guest: method === 'guest' };
+      userListeners.forEach((cb) => cb(user));
+    },
+    async setName(name) { user = { ...user, name }; userListeners.forEach((cb) => cb(user)); },
     async signOut() { user = null; userListeners.forEach((cb) => cb(user)); },
     async saveScore(id, sets) { requireUser(); data.scores[id] = { sets: sets.map(([a, b]) => ({ a, b })), ...stamp() }; commit(); },
     async clearScore(id) { requireUser(); delete data.scores[id]; commit(); },
     async saveSeeds(div, order) { requireUser(); data.seeds[div] = { order, ...stamp() }; commit(); },
     async clearSeeds(div) { requireUser(); delete data.seeds[div]; commit(); },
   };
+}
+
+/** Name shown next to a score. Guests are labeled; firestore.rules enforces the suffix. */
+export function byLine(user) {
+  if (!user) return '';
+  const name = (user.name || user.email || 'Parent').slice(0, 60);
+  return user.guest ? `${name} (guest)` : name;
 }
 
 /** Convert stored [{a,b}] sets back to [[a,b]] for logic.js. */

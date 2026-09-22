@@ -9,3 +9,7 @@ export const firebaseConfig = {
   messagingSenderId: '396411143485',
   appId: '1:396411143485:web:35520c33edfc7d5900b154',
 };
+
+// Sign-in buttons shown to scorekeepers. Each must also be enabled in
+// Firebase console → Authentication → Sign-in method. Add 'apple' once Apple is configured.
+export const signInMethods = ['google', 'guest'];

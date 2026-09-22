@@ -4,7 +4,7 @@ import {
 import {
   validateSets, matchResult, allStandings, autoSeeds, effectiveSeeds, resolveBracket, placements, refLabel,
 } from './logic.js';
-import { createStore, normalizeScores } from './store.js';
+import { createStore, normalizeScores, byLine } from './store.js';
 
 // ---------- state ----------
 
@@ -315,7 +315,7 @@ function renderInfo() {
     </section>
     <section class="card">
       <h2>Entering scores</h2>
-      <p class="small">Anyone can follow along. To enter a score, tap a match and sign in with a Google account. Your name is shown next to each score you enter. Scores entered with no signal are saved on your phone and sync when you’re back online.</p>
+      <p class="small">Anyone can follow along. To enter a score, tap a match and sign in with Google or continue as a guest with your name. Your name is shown next to each score you enter. Scores entered with no signal are saved on your phone and sync when you’re back online.</p>
     </section>
     <p class="muted small center">Unofficial parent site. The tournament director’s schedule is the official one.</p>`;
 }
@@ -333,7 +333,7 @@ function render() {
   document.querySelectorAll('.tabs button').forEach((b) => b.classList.toggle('on', b.dataset.tab === state.tab));
   const btn = $('#authBtn');
   btn.textContent = state.user ? 'Sign out' : 'Sign in';
-  btn.title = state.user ? `Signed in as ${state.user.name}` : 'Sign in with Google to enter scores';
+  btn.title = state.user ? `Signed in as ${byLine(state.user)}` : 'Sign in to enter scores';
 }
 
 function setTab(tab) {
@@ -354,8 +354,43 @@ function openSheet(html, onReady) {
 function closeSheet() { sheet.close(); }
 sheet.addEventListener('click', (e) => { if (e.target === sheet) closeSheet(); });
 
+// Action to resume after a successful sign-in (e.g. reopen the score sheet).
+let afterSignIn = null;
+
 function signInPrompt(msg) {
-  return `<div class="signin-box"><p>${esc(msg)}</p><button type="button" class="btn primary" data-signin>Sign in with Google</button></div>`;
+  const methods = state.store?.signInMethods ?? ['google'];
+  const buttons = [];
+  if (methods.includes('google')) buttons.push('<button type="button" class="btn primary" data-signin="google">Sign in with Google</button>');
+  if (methods.includes('apple')) buttons.push('<button type="button" class="btn apple" data-signin="apple"> Sign in with Apple</button>');
+  const guest = methods.includes('guest')
+    ? `<div class="or"><span>or</span></div>
+       <label class="name-field"><span>Your name</span><input name="personName" maxlength="40" autocomplete="name" placeholder="e.g. Jamie (Canyon parent)"></label>
+       <button type="button" class="btn" data-guest>Continue as guest</button>
+       <p class="muted small">Guest scores are labeled “(guest)”.</p>`
+    : '';
+  return `<div class="signin-box"><p>${esc(msg)}</p>${buttons.join('')}${guest}<p class="err" role="alert"></p></div>`;
+}
+
+function namePrompt() {
+  return `<div class="signin-box"><p>What name should show next to scores you enter?</p>
+    <label class="name-field"><span>Your name</span><input name="personName" maxlength="40" autocomplete="name" placeholder="e.g. Jamie (Canyon parent)"></label>
+    <button type="button" class="btn primary" data-setname>Save name</button><p class="err" role="alert"></p></div>`;
+}
+
+/** Returns true if the user can edit now; otherwise shows sign-in (or name) and resumes `resume` afterwards. */
+function requireEditor(title, resume) {
+  if (state.user?.name) return true;
+  afterSignIn = resume;
+  openSheet(`<h2>${esc(title)}</h2>${state.user ? namePrompt() : signInPrompt('Anyone can view scores. Sign in to enter or fix one.')}`, (el) => {
+    const input = $('[name=personName]', el);
+    // Enter in the name field acts like the name/guest button instead of closing the dialog.
+    $('form', el).addEventListener('submit', (e) => {
+      e.preventDefault();
+      $('[data-setname],[data-guest]', el)?.click();
+    });
+    if (state.user) input?.focus();
+  });
+  return false;
 }
 
 function openScoreSheet(id) {
@@ -371,8 +406,8 @@ function openScoreSheet(id) {
       <input inputmode="numeric" pattern="[0-9]*" maxlength="2" name="b${i}" value="${esc(v[1])}" aria-label="${esc(s.b)} set ${i + 1}">
     </div>`;
   }).join('');
-  const body = state.user
-    ? `<div class="set-row head"><span></span><span class="tn">${esc(s.a)}</span><span class="tn">${esc(s.b)}</span></div>
+  if (!requireEditor(`${matchLabel(m)} · ${s.a} vs ${s.b}`, () => openScoreSheet(id))) return;
+  const body = `<div class="set-row head"><span></span><span class="tn">${esc(s.a)}</span><span class="tn">${esc(s.b)}</span></div>
        ${inputs}
        <p class="err" role="alert"></p>
        <div class="btn-row">
@@ -380,8 +415,7 @@ function openScoreSheet(id) {
          <button type="button" class="btn" data-cancel>Cancel</button>
          <button type="submit" class="btn primary">Save</button>
        </div>
-       <p class="muted small">Signed in as ${esc(state.user.name)}. Your name will show next to this score.</p>`
-    : signInPrompt('Anyone can view scores. Sign in with a Google account to enter or fix one.');
+       <p class="muted small">Signed in as ${esc(byLine(state.user))}. Your name will show next to this score.</p>`;
   openSheet(`<h2>${esc(matchLabel(m))} · ${esc(m.time)} · ${esc(VENUES[m.venue].short)} Court ${m.court}</h2>
     <p class="vs">${teamSpan(s.a, s.aPh)} <span class="muted">vs</span> ${teamSpan(s.b, s.bPh)}</p>${body}`, (el) => {
     const form = $('form', el);
@@ -407,10 +441,7 @@ function openScoreSheet(id) {
 
 function openSeedSheet(divKey) {
   const d = derived.divisions[divKey];
-  if (!state.user) {
-    openSheet(`<h2>Edit ${esc(d.name)} seeds</h2>${signInPrompt('Sign in with a Google account to change seeds.')}`);
-    return;
-  }
+  if (!requireEditor(`Edit ${d.name} seeds`, () => openSeedSheet(divKey))) return;
   const current = d.seeds ?? [];
   // Suggest the teams that finished in this division's ranks first.
   const eligible = Object.values(derived.standings).every((s) => s.complete)
@@ -463,17 +494,54 @@ function toast(msg) {
   setTimeout(() => t.remove(), 5000);
 }
 
-async function signIn() {
-  try { await state.store.signIn(); }
-  catch (err) {
-    if (err?.code !== 'auth/popup-closed-by-user' && err?.code !== 'auth/cancelled-popup-request') toast(`Sign-in failed: ${err.message}`);
+const SIGNIN_ERRORS = {
+  'auth/operation-not-allowed': 'That sign-in option isn’t turned on yet.',
+  'auth/admin-restricted-operation': 'That sign-in option isn’t turned on yet.',
+  'auth/unauthorized-domain': 'Sign-in isn’t set up for this web address yet.',
+  'auth/network-request-failed': 'No connection. Try again when you have signal.',
+  'auth/popup-blocked': 'Your browser blocked the sign-in window. Allow pop-ups and try again.',
+};
+
+async function signIn(method, name) {
+  try {
+    await state.store.signIn(method, name);
+    const next = afterSignIn;
+    afterSignIn = null;
+    if (sheet.open) closeSheet();
+    if (next && state.user?.name) next();
+    else if (next) requireEditor('One more thing', next);
+  } catch (err) {
+    if (err?.code === 'auth/popup-closed-by-user' || err?.code === 'auth/cancelled-popup-request') return;
+    const msg = SIGNIN_ERRORS[err?.code] ?? `Sign-in failed: ${err.message}`;
+    const box = $('.err', sheet);
+    if (sheet.open && box) box.textContent = msg; else toast(msg);
+  }
+}
+
+function nameFromSheet() {
+  const v = $('[name=personName]', sheet)?.value.trim() ?? '';
+  if (v.length < 2) { $('.err', sheet).textContent = 'Please enter your name.'; return null; }
+  return v;
+}
+
+async function setName() {
+  const name = nameFromSheet();
+  if (!name) return;
+  try {
+    await state.store.setName(name);
+    const next = afterSignIn;
+    afterSignIn = null;
+    closeSheet();
+    next?.();
+  } catch (err) {
+    $('.err', sheet).textContent = `Couldn’t save your name: ${err.message}`;
   }
 }
 
 // ---------- events ----------
 
 document.addEventListener('click', (e) => {
-  const t = e.target.closest('[data-tab],[data-venue],[data-div],[data-match],[data-edit-seeds],[data-goto],[data-signin],[data-cancel]');
+  const t = e.target.closest('[data-tab],[data-venue],[data-div],[data-match],[data-edit-seeds],[data-goto],[data-signin],[data-guest],[data-setname],[data-cancel]');
   if (!t) return;
   if (t.dataset.tab) setTab(t.dataset.tab);
   else if (t.dataset.goto) { e.preventDefault(); setTab(t.dataset.goto); }
@@ -481,11 +549,16 @@ document.addEventListener('click', (e) => {
   else if (t.dataset.div) { state.division = t.dataset.div; LS.set('vfsc26-div', state.division); render(); }
   else if (t.dataset.match) { if (t.getAttribute('aria-disabled') !== 'true') openScoreSheet(t.dataset.match); }
   else if (t.dataset.editSeeds) openSeedSheet(t.dataset.editSeeds);
-  else if ('signin' in t.dataset) { closeSheet(); signIn(); }
+  else if (t.dataset.signin) signIn(t.dataset.signin);
+  else if ('guest' in t.dataset) { const name = nameFromSheet(); if (name) signIn('guest', name); }
+  else if ('setname' in t.dataset) setName();
   else if ('cancel' in t.dataset) closeSheet();
 });
 
-$('#authBtn').addEventListener('click', () => (state.user ? state.store.signOut() : signIn()));
+$('#authBtn').addEventListener('click', () => {
+  if (state.user) { if (confirm(`Sign out ${byLine(state.user)}?`)) state.store.signOut(); }
+  else requireEditor('Sign in to enter scores', null);
+});
 
 const pick = $('#teamPick');
 pick.innerHTML = `<option value="">Everyone</option>` + Object.entries(POOLS).map(([k, p]) =>

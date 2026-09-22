@@ -1,15 +1,23 @@
 rules_version = '2';
 
-// Anyone can read. Any signed-in Google user can write scores and seeds, in a valid shape.
+// Anyone can read. Signed-in users can write scores and seeds, in a valid shape:
+//   - Google or Apple accounts, or
+//   - guests (Firebase anonymous sign-in), whose name must end in " (guest)".
+// To turn guests off, remove 'anonymous' from the provider list below.
 // To restrict editing to named scorekeepers later, change isEditor() to:
-//   ...existing checks... && request.auth.token.email in ['you@gmail.com', 'keeper@gmail.com']
+//   request.auth != null && request.auth.token.email in ['you@gmail.com', 'keeper@gmail.com']
 service cloud.firestore {
   match /databases/{database}/documents {
 
+    function provider() {
+      return request.auth.token.firebase.sign_in_provider;
+    }
+
     function isEditor() {
       return request.auth != null
-        && request.auth.token.firebase.sign_in_provider == 'google.com'
-        && request.auth.token.email_verified == true;
+        && (provider() == 'anonymous'
+          || provider() == 'apple.com'
+          || (provider() == 'google.com' && request.auth.token.email_verified == true));
     }
 
     function validScore(n) {
@@ -22,6 +30,7 @@ service cloud.firestore {
 
     function validStamp(d) {
       return d.by is string && d.by.size() <= 80
+        && (provider() != 'anonymous' || d.by.matches('.+ [(]guest[)]$'))
         && d.uid == request.auth.uid
         && d.updatedAt == request.time;
     }
