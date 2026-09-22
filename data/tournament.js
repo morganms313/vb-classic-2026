@@ -16,7 +16,7 @@ export const EVENT = {
     { time: '6:00 PM', label: 'Awards (Valencia)' },
   ],
   tickets: {
-    url: 'https://www.ladyvikingsvolleyball.com',
+    url: 'https://www.zeffy.com/en-US/ticketing/valencia-classic-volleyball-tournaments',
     price: '$10',
     notes: [
       'Cashless — buy online before you arrive (gym WiFi is spotty)',

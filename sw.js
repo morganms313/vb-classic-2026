@@ -1,11 +1,11 @@
 // Offline shell: the page opens with no signal and shows the last-seen scores
 // (Firestore keeps those in IndexedDB). Site files are network-first with a short
 // timeout so updates land quickly; the versioned Firebase SDK is cache-first.
-const CACHE = 'vfsc26-v2';
+const CACHE = 'vfsc26-v3';
 const SDK = 'https://www.gstatic.com/firebasejs/12.3.0';
 const SHELL = [
   './', 'index.html', 'css/style.css', 'js/app.js', 'js/logic.js', 'js/store.js', 'js/firebase-config.js',
-  'data/tournament.js', 'manifest.webmanifest', 'icon.svg', 'icon-192.png',
+  'data/tournament.js', 'manifest.webmanifest', 'icon.svg', 'icon-192.png', 'logo.png',
 ];
 const SDK_FILES = ['firebase-app.js', 'firebase-firestore.js', 'firebase-auth.js'].map((f) => `${SDK}/${f}`);
 
