@@ -204,6 +204,9 @@ th { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spa
 .rk { width: 22px; color: var(--muted); font-weight: 700; }
 .dest { width: 24px; }
 .me-row { background: var(--me); }
+.pool-teams { list-style: none; margin: 4px 0 8px; padding: 0; display: grid; grid-template-columns: 1fr 1fr; gap: 4px 12px; font-weight: 600; }
+.pool-teams li { padding: 4px 6px; border-radius: 6px; }
+.auth-btn[hidden] { display: none; }
 @media (min-width: 760px) {
   #view:has(.pool) { display: grid; grid-template-columns: 1fr 1fr; gap: 0 12px; }
   #view:has(.pool) > p { grid-column: 1 / -1; }

@@ -6,6 +6,10 @@ import {
 } from './logic.js';
 import { createStore, normalizeScores, byLine } from './store.js';
 
+// Score entry, standings, and auto-seeding. Off since 2026-09-26: not enough parents
+// entering scores. Flip to true to bring back sign-in, score sheets, standings, and seeds.
+const SCORING = false;
+
 // ---------- state ----------
 
 const LS = {
@@ -27,12 +31,12 @@ const state = {
 let derived = null;
 
 function derive() {
-  const scores = state.scores;
+  const scores = SCORING ? state.scores : {};
   const standings = allStandings(POOLS, POOL_MATCHES, scores);
   const divisions = {};
   for (const d of Object.values(DIVISIONS)) {
     const auto = autoSeeds(standings, d.ranks);
-    const eff = effectiveSeeds(auto, state.seedOverrides[d.key]);
+    const eff = effectiveSeeds(auto, SCORING ? state.seedOverrides[d.key] : null);
     const matches = PLAYOFF_MATCHES.filter((m) => m.division === d.key);
     const bracket = resolveBracket(matches, eff.seeds, scores);
     divisions[d.key] = { ...d, auto, ...eff, bracket, places: placements(bracket) };
@@ -101,7 +105,7 @@ function sides(m) {
 // ---------- match card ----------
 
 function matchCard(m, opts = {}) {
-  const sc = state.scores[m.id];
+  const sc = SCORING ? state.scores[m.id] : undefined;
   const res = sc ? matchResult(m.kind, sc.sets, isFinal(sc)) : null;
   const inProgress = !!sc && !isFinal(sc);
   const s = sides(m);
@@ -124,12 +128,12 @@ function matchCard(m, opts = {}) {
         : `${setCells(i)}${res ? `<span class="tot">${i === 0 ? res.s1 : res.s2}</span>` : ''}`}</span>
     </div>`;
   };
-  const canTap = m.kind === 'pool' || (s.a && s.b);
+  const canTap = SCORING && (m.kind === 'pool' || !!(s.a && s.b));
   const meta = opts.showWhen ? `${esc(m.time)} · Ct ${m.court}` : `Court ${m.court}`;
   const stamp = sc ? `${sc.by ? ` · ${esc(sc.by)}` : ''} · ${ago(sc.updatedAt)}${sc.pending ? ' · <b>syncing…</b>' : ''}` : '';
   const status = res ? `Final${stamp}`
     : inProgress ? `<b class="inprog">In progress</b>${stamp}`
-    : canTap ? 'Tap to enter score' : 'Waiting on earlier results';
+    : canTap ? 'Tap to enter score' : SCORING ? 'Waiting on earlier results' : '';
   return `<button type="button" class="match${mine ? ' mine' : ''}${working ? ' working' : ''}${live ? ' live' : ''}${res ? ' done' : ''}" data-match="${m.id}" ${canTap ? '' : 'aria-disabled="true"'}>
     <div class="mhead"><span class="mlabel">${esc(matchLabel(m))}${m.round && (!opts.showWhen || opts.showRound) ? ` · ${esc(m.round)}` : ''}</span><span class="mmeta">${live ? `<span class="now">${inProgress ? 'Live' : 'Now'}</span>` : ''}${meta}</span></div>
     ${row(s.a, s.aPh, s.aSeed, 0)}
@@ -178,7 +182,7 @@ function myTeamCard() {
     const s = sides(m);
     const plays = s.a === t || s.b === t;
     const opp = plays ? (s.a === t ? s.b : s.a) : null;
-    const sc = state.scores[m.id];
+    const sc = SCORING ? state.scores[m.id] : undefined;
     const res = sc ? matchResult(m.kind, sc.sets, isFinal(sc)) : null;
     let outcome = '';
     if (plays && sc) {
@@ -202,7 +206,7 @@ function myTeamCard() {
   return `<section class="card myteam">
     <div class="myhead">
       <div><div class="kicker">Pool ${poolKey} · ${esc(VENUES[p.venue].short)}</div><h2>${esc(t)}</h2></div>
-      <div class="rec"><b>${row.mw}–${row.ml}</b><small>#${row.rank} in pool</small></div>
+      ${SCORING ? `<div class="rec"><b>${row.mw}–${row.ml}</b><small>#${row.rank} in pool</small></div>` : ''}
     </div>
     ${playoff ? `<div class="pills">${playoff}</div>` : ''}
     <ul class="agenda">${lines}</ul>
@@ -235,6 +239,7 @@ function renderSchedule() {
 }
 
 function renderPools() {
+  if (!SCORING) return renderPoolLists();
   return Object.entries(POOLS).map(([k, p]) => {
     const st = derived.standings[k];
     const rows = st.rows.map((r) => {
@@ -251,6 +256,20 @@ function renderPools() {
     </section>`;
   }).join('') + `<p class="muted small center">Ranked by match wins, then set win %, then head-to-head (two-way ties), then point differential.<br>
     <span class="dot gold">G</span> Gold (1st/2nd) · <span class="dot purple">P</span> Purple (3rd/4th)</p>`;
+}
+
+// Pools without standings: each pool's teams and its six matches.
+function renderPoolLists() {
+  return Object.entries(POOLS).map(([k, p]) => {
+    const teams = p.teams.map((t) => `<li class="${t === state.team ? 'me-row' : ''}">${esc(t)}</li>`).join('');
+    const games = POOL_MATCHES.filter((m) => m.pool === k).map((m) =>
+      `<tr class="${[m.t1, m.t2, m.work].includes(state.team) ? 'me-row' : ''}"><td class="rk">${esc(m.time.replace(':00', ''))}</td><td class="tm">${teamSpan(m.t1)} <span class="muted">vs</span> ${teamSpan(m.t2)}</td><td class="muted small">Work: ${esc(m.work)}</td></tr>`).join('');
+    return `<section class="card pool">
+      <div class="pool-head"><h2>Pool ${k}</h2><span class="muted small">${esc(VENUES[p.venue].short)} · Court ${p.court}</span></div>
+      <ul class="pool-teams">${teams}</ul>
+      <table><tbody>${games}</tbody></table>
+    </section>`;
+  }).join('') + `<p class="muted small center"><span class="dot gold">G</span> 1st &amp; 2nd in each pool play Gold at Valencia · <span class="dot purple">P</span> 3rd &amp; 4th play Purple at Golden Valley</p>`;
 }
 
 function renderBracket() {
@@ -285,11 +304,11 @@ function renderBracket() {
     <p class="muted small center swipe-hint">Swipe sideways to see every round →</p>
     <h2 class="section-title">Consolation &amp; 3rd place</h2>
     <div class="grid">${[5, 8, 11, 14, 16].map((n) => matchCard(byN(n), { showWhen: true, showRound: true })).join('')}</div>
-    <section class="card seeds">
+    ${SCORING ? `<section class="card seeds">
       <div class="pool-head"><h2>${esc(d.name)} seeds</h2><button type="button" class="link-btn" data-edit-seeds="${d.key}">Edit seeds</button></div>
       <p class="muted small">${seedSrc}</p>
       <ol class="seed-list">${seedList}</ol>
-    </section>`;
+    </section>` : `<p class="muted small center">Seeds 1–12 are set from pool results after pool play. Check with your coach or the bracket posted at the gym.</p>`}`;
 }
 
 function renderInfo() {
@@ -319,10 +338,10 @@ function renderInfo() {
       <p><b>${esc(EVENT.contact.name)}</b><br><span class="muted small">${esc(EVENT.contact.role)}</span></p>
       <div class="btn-row"><a class="btn" href="tel:${esc(EVENT.contact.phone.replace(/\D/g, ''))}">Call ${esc(EVENT.contact.phone)}</a><a class="btn" href="mailto:${esc(EVENT.contact.email)}">Email</a></div>
     </section>
-    <section class="card">
+    ${SCORING ? `<section class="card">
       <h2>Entering scores</h2>
       <p class="small">Anyone can follow along. To enter a score, tap a match and sign in with Google or continue as a guest with your name. Your name is shown next to each score you enter. Scores entered with no signal are saved on your phone and sync when you’re back online.</p>
-    </section>
+    </section>` : ''}
     <p class="muted small center">Unofficial parent site. The tournament director’s schedule is the official one.</p>`;
 }
 
@@ -338,6 +357,7 @@ function render() {
   window.scrollTo(0, y);
   document.querySelectorAll('.tabs button').forEach((b) => b.classList.toggle('on', b.dataset.tab === state.tab));
   const btn = $('#authBtn');
+  btn.hidden = !SCORING;
   btn.textContent = state.user ? 'Sign out' : 'Sign in';
   btn.title = state.user ? `Signed in as ${byLine(state.user)}` : 'Sign in to enter scores';
 }
@@ -596,7 +616,7 @@ window.addEventListener('offline', updateBanner);
 render();
 setInterval(render, 60_000); // refresh "x min ago" and Now markers
 
-createStore().then((store) => {
+if (SCORING) createStore().then((store) => {
   state.store = store;
   updateBanner();
   store.onUser((u) => { state.user = u; render(); });
