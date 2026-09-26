@@ -1,15 +1,20 @@
 // Pure tournament logic: no DOM, no Firebase. Tested with `node --test`.
 
-/** Validate a set list for a match kind. Returns an error string or null. */
-export function validateSets(kind, sets) {
+/**
+ * Validate a set list for a match kind. Returns an error string or null.
+ * In-progress scores (final = false) only need valid numbers; ties and unfinished sets are fine.
+ */
+export function validateSets(kind, sets, final = true) {
   if (!Array.isArray(sets) || sets.length === 0) return 'Enter at least one set.';
   for (const s of sets) {
     if (!Array.isArray(s) || s.length !== 2) return 'Each set needs two scores.';
     for (const v of s) {
       if (!Number.isInteger(v) || v < 0 || v > 60) return 'Scores must be whole numbers 0–60.';
     }
-    if (s[0] === s[1]) return 'A set can’t end in a tie.';
   }
+  if (sets.length > (kind === 'playoff' ? 1 : 3)) return kind === 'playoff' ? 'Playoff matches are one set.' : 'Pool matches are best of three.';
+  if (!final) return null;
+  for (const s of sets) if (s[0] === s[1]) return 'A final set can’t be tied.';
   if (kind === 'playoff') {
     if (sets.length !== 1) return 'Playoff matches are one set.';
     return null;
@@ -26,9 +31,9 @@ export function validateSets(kind, sets) {
   return null;
 }
 
-/** Summary of a scored match: sets won by each side and winner index (1|2), or null if undecided. */
-export function matchResult(kind, sets) {
-  if (!sets || validateSets(kind, sets)) return null;
+/** Summary of a final match: sets won by each side and winner index (1|2), or null if not final/decided. */
+export function matchResult(kind, sets, final = true) {
+  if (!final || !sets || validateSets(kind, sets)) return null;
   let s1 = 0;
   let s2 = 0;
   let p1 = 0;
@@ -41,6 +46,9 @@ export function matchResult(kind, sets) {
   }
   return { s1, s2, p1, p2, winner: s1 > s2 ? 1 : 2 };
 }
+
+/** Scores saved before in-progress entry existed have no `final` field; those were always complete. */
+export const isFinal = (score) => !!score && score.final !== false;
 
 const setPct = (r) => (r.sw + r.sl === 0 ? 0 : r.sw / (r.sw + r.sl));
 
@@ -68,7 +76,7 @@ export function poolStandings(teams, matches, scores) {
   const h2h = {};
   let played = 0;
   for (const m of matches) {
-    const r = matchResult('pool', scores[m.id]?.sets);
+    const r = matchResult('pool', scores[m.id]?.sets, isFinal(scores[m.id]));
     if (!r) continue;
     played++;
     const a = rec[m.t1];
@@ -165,7 +173,7 @@ export function resolveBracket(matches, seeds, scores) {
   for (const m of sorted) {
     const team1 = resolve(m.t1);
     const team2 = resolve(m.t2);
-    const result = team1 && team2 ? matchResult('playoff', scores[m.id]?.sets) : null;
+    const result = team1 && team2 ? matchResult('playoff', scores[m.id]?.sets, isFinal(scores[m.id])) : null;
     const r = {
       ...m,
       team1,

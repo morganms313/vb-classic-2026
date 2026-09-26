@@ -44,6 +44,22 @@ test('validateSets', () => {
   assert.match(validateSets('playoff', [[25, 23], [25, 1]]), /one set/);
 });
 
+test('in-progress scores: valid while partial, never counted', () => {
+  assert.equal(validateSets('pool', [[12, 12]], false), null);
+  assert.equal(validateSets('pool', [[25, 20], [10, 8]], false), null);
+  assert.equal(validateSets('playoff', [[14, 9]], false), null);
+  assert.match(validateSets('pool', [[25, 20], [10, 8], [1, 1], [0, 0]], false), /best of three/);
+  assert.equal(matchResult('pool', [[25, 20], [25, 18]], false), null);
+  const s = {};
+  const m = A[0];
+  s[m.id] = { sets: [[25, 20], [25, 18]], final: false };
+  assert.equal(poolStandings(POOLS.A.teams, A, s).played, 0);
+  s[m.id].final = true;
+  assert.equal(poolStandings(POOLS.A.teams, A, s).played, 1);
+  delete s[m.id].final; // legacy score saved before the flag existed
+  assert.equal(poolStandings(POOLS.A.teams, A, s).played, 1);
+});
+
 test('matchResult totals', () => {
   assert.deepEqual(matchResult('pool', [[25, 20], [18, 25], [15, 10]]), { s1: 2, s2: 1, p1: 58, p2: 55, winner: 1 });
   assert.equal(matchResult('pool', [[25, 20]]), null);
@@ -56,7 +72,7 @@ const A = POOL_MATCHES.filter((m) => m.pool === 'A');
 function scoreMatch(scores, m, winner, sets) {
   // winner is a team name; sets from the winner's perspective
   const flip = m.t2 === winner;
-  scores[m.id] = { sets: sets.map(([w, l]) => (flip ? [l, w] : [w, l])) };
+  scores[m.id] = { sets: sets.map(([w, l]) => (flip ? [l, w] : [w, l])), final: true };
 }
 const find = (ms, x, y) => ms.find((m) => (m.t1 === x && m.t2 === y) || (m.t1 === y && m.t2 === x));
 
@@ -166,7 +182,7 @@ test('bracket resolves seeds, winners, losers, workers; top seeds win out', () =
       if (m.team1 && m.team2 && !scores[m.id]) {
         const n1 = Number(m.team1.slice(4));
         const n2 = Number(m.team2.slice(4));
-        scores[m.id] = { sets: [n1 < n2 ? [25, 20] : [20, 25]] };
+        scores[m.id] = { sets: [n1 < n2 ? [25, 20] : [20, 25]], final: true };
       }
     }
   }

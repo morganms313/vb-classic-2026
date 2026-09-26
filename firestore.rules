@@ -25,7 +25,8 @@ service cloud.firestore {
     }
 
     function validSet(s) {
-      return s is map && s.keys().hasOnly(['a', 'b']) && validScore(s.a) && validScore(s.b) && s.a != s.b;
+      // Ties allowed: in-progress scores (e.g. 12–12) are saved as the match is played.
+      return s is map && s.keys().hasOnly(['a', 'b']) && validScore(s.a) && validScore(s.b);
     }
 
     function validStamp(d) {
@@ -40,7 +41,8 @@ service cloud.firestore {
       allow delete: if isEditor() && matchId.matches('^([A-F][1-6]|[GP]([1-9]|1[0-6]))$');
       allow create, update: if isEditor()
         && matchId.matches('^([A-F][1-6]|[GP]([1-9]|1[0-6]))$')
-        && request.resource.data.keys().hasOnly(['sets', 'by', 'uid', 'updatedAt'])
+        && request.resource.data.keys().hasOnly(['sets', 'final', 'by', 'uid', 'updatedAt'])
+        && (!('final' in request.resource.data) || request.resource.data.final is bool)
         && request.resource.data.sets is list
         && request.resource.data.sets.size() >= 1
         && request.resource.data.sets.size() <= 3

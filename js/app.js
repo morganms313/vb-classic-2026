@@ -2,7 +2,7 @@ import {
   EVENT, VENUES, POOLS, POOL_MATCHES, PLAYOFF_MATCHES, DIVISIONS, ALL_TEAMS, TIME_ORDER,
 } from '../data/tournament.js';
 import {
-  validateSets, matchResult, allStandings, autoSeeds, effectiveSeeds, resolveBracket, placements, refLabel,
+  validateSets, matchResult, isFinal, allStandings, autoSeeds, effectiveSeeds, resolveBracket, placements, refLabel,
 } from './logic.js';
 import { createStore, normalizeScores, byLine } from './store.js';
 
@@ -102,11 +102,12 @@ function sides(m) {
 
 function matchCard(m, opts = {}) {
   const sc = state.scores[m.id];
-  const res = sc ? matchResult(m.kind, sc.sets) : null;
+  const res = sc ? matchResult(m.kind, sc.sets, isFinal(sc)) : null;
+  const inProgress = !!sc && !isFinal(sc);
   const s = sides(m);
   const mine = state.team && [s.a, s.b].includes(state.team);
   const working = state.team && s.w === state.team;
-  const live = !res && isLive(m);
+  const live = inProgress || (!res && isLive(m));
   const sets = sc?.sets ?? [];
   const setCells = (i) =>
     sets.map((set) => {
@@ -119,17 +120,18 @@ function matchCard(m, opts = {}) {
       ${seed ? `<span class="seed">${esc(seed)}</span>` : ''}
       ${teamSpan(name, ph)}
       <span class="sets">${m.kind === 'playoff'
-        ? (res ? `<span class="tot pts">${sets[0][i]}</span>` : '')
+        ? (sets.length ? `<span class="tot pts">${sets[0][i]}</span>` : '')
         : `${setCells(i)}${res ? `<span class="tot">${i === 0 ? res.s1 : res.s2}</span>` : ''}`}</span>
     </div>`;
   };
   const canTap = m.kind === 'pool' || (s.a && s.b);
   const meta = opts.showWhen ? `${esc(m.time)} · Ct ${m.court}` : `Court ${m.court}`;
-  const status = res
-    ? `Final${sc.by ? ` · ${esc(sc.by)}` : ''} · ${ago(sc.updatedAt)}${sc.pending ? ' · <b>syncing…</b>' : ''}`
+  const stamp = sc ? `${sc.by ? ` · ${esc(sc.by)}` : ''} · ${ago(sc.updatedAt)}${sc.pending ? ' · <b>syncing…</b>' : ''}` : '';
+  const status = res ? `Final${stamp}`
+    : inProgress ? `<b class="inprog">In progress</b>${stamp}`
     : canTap ? 'Tap to enter score' : 'Waiting on earlier results';
   return `<button type="button" class="match${mine ? ' mine' : ''}${working ? ' working' : ''}${live ? ' live' : ''}${res ? ' done' : ''}" data-match="${m.id}" ${canTap ? '' : 'aria-disabled="true"'}>
-    <div class="mhead"><span class="mlabel">${esc(matchLabel(m))}${m.round && (!opts.showWhen || opts.showRound) ? ` · ${esc(m.round)}` : ''}</span><span class="mmeta">${live ? '<span class="now">Now</span>' : ''}${meta}</span></div>
+    <div class="mhead"><span class="mlabel">${esc(matchLabel(m))}${m.round && (!opts.showWhen || opts.showRound) ? ` · ${esc(m.round)}` : ''}</span><span class="mmeta">${live ? `<span class="now">${inProgress ? 'Live' : 'Now'}</span>` : ''}${meta}</span></div>
     ${row(s.a, s.aPh, s.aSeed, 0)}
     ${row(s.b, s.bPh, s.bSeed, 1)}
     <div class="mfoot"><span class="work">Work: ${teamSpan(s.w, s.wPh)}${m.note ? ' <span class="flag" title="' + esc(m.note) + '">⚠︎</span>' : ''}</span><span class="status">${status}</span></div>
@@ -177,13 +179,17 @@ function myTeamCard() {
     const plays = s.a === t || s.b === t;
     const opp = plays ? (s.a === t ? s.b : s.a) : null;
     const sc = state.scores[m.id];
-    const res = sc ? matchResult(m.kind, sc.sets) : null;
+    const res = sc ? matchResult(m.kind, sc.sets, isFinal(sc)) : null;
     let outcome = '';
-    if (plays && res) {
+    if (plays && sc) {
       const mineIdx = s.a === t ? 1 : 2;
-      const w = res.winner === mineIdx;
       const setsTxt = sc.sets.map((x) => (mineIdx === 1 ? x : [x[1], x[0]]).join('–')).join(', ');
-      outcome = `<span class="res ${w ? 'w' : 'l'}">${w ? 'W' : 'L'}</span> <span class="muted">${setsTxt}</span>`;
+      if (res) {
+        const w = res.winner === mineIdx;
+        outcome = `<span class="res ${w ? 'w' : 'l'}">${w ? 'W' : 'L'}</span> <span class="muted">${setsTxt}</span>`;
+      } else {
+        outcome = `<span class="now">Live</span> <span class="muted">${setsTxt}</span>`;
+      }
     }
     return `<li class="${plays ? 'play' : 'workrow'}${!res && isLive(m) ? ' live' : ''}">
       <span class="when">${esc(m.time.replace(':00', ''))}</span>
@@ -409,6 +415,7 @@ function openScoreSheet(id) {
   if (!requireEditor(`${matchLabel(m)} · ${s.a} vs ${s.b}`, () => openScoreSheet(id))) return;
   const body = `<div class="set-row head"><span></span><span class="tn">${esc(s.a)}</span><span class="tn">${esc(s.b)}</span></div>
        ${inputs}
+       <label class="final-box"><input type="checkbox" name="final" ${isFinal(state.scores[id]) ? 'checked' : ''}> <span><b>Match is final</b><br><small class="muted">Leave unchecked to save the score so far. Standings and the bracket update once it’s final.</small></span></label>
        <p class="err" role="alert"></p>
        <div class="btn-row">
          ${existing.length ? '<button type="button" class="btn danger" data-clear>Clear score</button>' : ''}
@@ -427,11 +434,12 @@ function openScoreSheet(id) {
         const a = form[`a${i}`].value.trim();
         const b = form[`b${i}`].value.trim();
         if (a === '' && b === '') continue;
-        sets.push([Number(a), Number(b)]);
+        sets.push([Number(a || 0), Number(b || 0)]);
       }
-      const err = validateSets(m.kind, sets);
+      const final = form.final.checked;
+      const err = validateSets(m.kind, sets, final);
       if (err) { $('.err', el).textContent = err; return; }
-      save(() => state.store.saveScore(id, sets));
+      save(() => state.store.saveScore(id, sets, final));
     });
     $('[data-clear]', el)?.addEventListener('click', () => {
       if (confirm('Clear this score?')) save(() => state.store.clearScore(id));

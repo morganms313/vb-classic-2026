@@ -9,7 +9,7 @@
 //   store.signIn(method, name?)     method: 'google' | 'apple' | 'guest' (guest requires name)
 //   store.setName(name)             for accounts with no display name (e.g. Apple with hidden name)
 //   store.signOut()
-//   store.saveScore(id, sets)       / store.clearScore(id)
+//   store.saveScore(id, sets, final) / store.clearScore(id)
 //   store.saveSeeds(div, order)     / store.clearSeeds(div)
 
 import { firebaseConfig, signInMethods } from './firebase-config.js';
@@ -92,10 +92,10 @@ async function firestoreStore() {
     },
     signOut: () => au.signOut(auth),
     // Writes resolve on server ack; offline they queue, so don't await them in the UI.
-    saveScore(id, sets) {
+    saveScore(id, sets, final) {
       requireUser();
       // Firestore can't store nested arrays; store sets as [{a,b}, …].
-      return fs.setDoc(fs.doc(db, 'scores', id), { sets: sets.map(([a, b]) => ({ a, b })), ...stamp() });
+      return fs.setDoc(fs.doc(db, 'scores', id), { sets: sets.map(([a, b]) => ({ a, b })), final: !!final, ...stamp() });
     },
     clearScore(id) { requireUser(); return fs.deleteDoc(fs.doc(db, 'scores', id)); },
     saveSeeds(div, order) { requireUser(); return fs.setDoc(fs.doc(db, 'seeds', div), { order, ...stamp() }); },
@@ -136,7 +136,7 @@ function demoStore() {
     },
     async setName(name) { user = { ...user, name }; userListeners.forEach((cb) => cb(user)); },
     async signOut() { user = null; userListeners.forEach((cb) => cb(user)); },
-    async saveScore(id, sets) { requireUser(); data.scores[id] = { sets: sets.map(([a, b]) => ({ a, b })), ...stamp() }; commit(); },
+    async saveScore(id, sets, final) { requireUser(); data.scores[id] = { sets: sets.map(([a, b]) => ({ a, b })), final: !!final, ...stamp() }; commit(); },
     async clearScore(id) { requireUser(); delete data.scores[id]; commit(); },
     async saveSeeds(div, order) { requireUser(); data.seeds[div] = { order, ...stamp() }; commit(); },
     async clearSeeds(div) { requireUser(); delete data.seeds[div]; commit(); },
