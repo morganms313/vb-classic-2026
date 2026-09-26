@@ -1,7 +1,7 @@
 // Offline shell: the page opens with no signal and shows the last-seen scores
 // (Firestore keeps those in IndexedDB). Site files are network-first with a short
 // timeout so updates land quickly; the versioned Firebase SDK is cache-first.
-const CACHE = 'vfsc26-v7';
+const CACHE = 'vfsc26-v8';
 const SDK = 'https://www.gstatic.com/firebasejs/12.3.0';
 const SHELL = [
   './', 'index.html', 'css/style.css', 'js/app.js', 'js/logic.js', 'js/store.js', 'js/firebase-config.js',
